@@ -19,8 +19,8 @@ except ImportError:
     HAS_REQUESTS = False
 
 # Supabase Configuration
-SUPABASE_URL = "https://rpmtfgntofxtxwmjpcxk.supabase.co"
-SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwbXRmZ250b2Z4dHh3bWpwY3hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU2Mzg2NzAsImV4cCI6MjA4MTIxNDY3MH0.AB33Qk3WjxnbYlCrvrkdGMJLujgIHki0o8Fprfodvpw"
+SUPABASE_URL = "YOUR_SUPABASE_URL"
+SUPABASE_ANON_KEY = "YOUR_ANON_KEY"
 
 # Local license file location
 LICENSE_FILE = Path.home() / ".kilat_code_clipper" / "license.dat"
