@@ -1,0 +1,65 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ====== TEST FILES - CONTAIN API KEYS! ======
+test_*.py
+test_*.jpg
+test_*.png
+test_*.mp4
+test_*.log
+temp_test/
+test_animator_output/
+test_animator_v2_output/
+testsprite_tests/
+
+# Debug files - CONTAIN API KEYS!
+debug_*.py
+debug_*.txt
+
+# Cookies and sensitive data
+*_cookies.txt
+*_cookies.json
+config.json
+
+# Large binaries (tracked separately or downloaded)
+cmake-*/
+
+# Screenshots and temp images
+kling_*.png
+*.webp
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Development artifacts (internal docs)
+.agent/
+
+# Large video files
+*.mp4
+!sfx/*.mp4
+
+# Pollinations API test
+test_pollinations_api.py
