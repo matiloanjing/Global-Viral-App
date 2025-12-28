@@ -78,18 +78,16 @@ Configure in **API Settings** tab:
 ## 📁 Project Structure
 
 ```
-OplusClip/
+Global-Viral-App/
 ├── main.py              # Main app + UI (Gradio)
 ├── animator_v2.py       # AI Animator engine
 ├── character_edit.py    # Character Edit engine
-├── youtube_helper.py    # YouTube download utilities
 ├── license.py           # License management
 ├── build_installer.py   # PyInstaller build script
 ├── requirements.txt     # Python dependencies
 ├── bin/                 # Bundled FFmpeg
 ├── sfx/                 # Sound effects
 ├── assets/              # UI assets
-└── .agent/              # Development documentation
 ```
 
 ---
@@ -102,12 +100,6 @@ OplusClip/
 4. **Configure**: Select genre, style, voice, filter
 5. **Generate**: Click process button and wait
 6. **Export**: Download generated video
-
----
-
-## 📖 Documentation
-
-See `.agent/BLUEPRINT.md` for detailed architecture and development guidelines.
 
 ---
 
@@ -125,13 +117,16 @@ Proprietary - License key required for activation.
 
 ---
 
-## 🤝 Contributing
-
-1. Read `.agent/BLUEPRINT.md` for architecture
-2. Follow `.agent/QUICK_REF.md` for coding guidelines
-3. Update `.agent/RECENT.md` and `CHANGELOG.md` for changes
-4. Test thoroughly before modifying core files
-
----
+<!--
+██╗  ██╗██╗██╗      █████╗ ████████╗ ██████╗ ██████╗ ██████╗ ███████╗
+██║ ██╔╝██║██║     ██╔══██╗╚══██╔══╝██╔════╝██╔═══██╗██╔══██╗██╔════╝
+█████╔╝ ██║██║     ███████║   ██║   ██║     ██║   ██║██║  ██║█████╗  
+██╔═██╗ ██║██║     ██╔══██║   ██║   ██║     ██║   ██║██║  ██║██╔══╝  
+██║  ██╗██║███████╗██║  ██║   ██║   ╚██████╗╚██████╔╝██████╔╝███████╗
+╚═╝  ╚═╝╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
+                                                                        
+🚀 Handcrafted by KilatCode Studio
+Copyright © 2025 KilatCode. All rights reserved.
+-->
 
 **Made with ❤️ for content creators**
