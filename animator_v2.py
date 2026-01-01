@@ -1103,32 +1103,90 @@ VOICE_OPTIONS = {
 # ============================================================================
 # HYBRID IMAGE GENERATION (Multiple Providers + Delay)
 # ============================================================================
+# Pollinations API key (set via set_pollinations_api_key)
+_pollinations_api_key: Optional[str] = None
+
+# Track which provider was used for the last successful image generation
+# Values: "Pollinations NEW API", "Pollinations OLD API", "Prodia", "Stable Horde", "Dezgo", "Perchance"
+_last_image_provider: str = ""
+
+def get_last_image_provider() -> str:
+    """Return the name of the last image provider that succeeded"""
+    global _last_image_provider
+    return _last_image_provider
+
+def set_pollinations_api_key(key: str):
+    """Set Pollinations API key for authenticated requests (faster, no queue)"""
+    global _pollinations_api_key
+    _pollinations_api_key = key if key else None
+    if key:
+        print(f"DEBUG: Pollinations API key configured (length: {len(key)})")
+
+
 def generate_image_pollinations(prompt: str, width: int, height: int, seed: int, output_path: str) -> bool:
-    """Try Pollinations.ai (primary provider)"""
-    try:
-        encoded_prompt = urllib.parse.quote(prompt)
-        if seed > 0:
-            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&seed={seed}&nologo=true&model=flux"
-        else:
-            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&nologo=true&model=flux"
-        
-        response = requests.get(url, timeout=120)
-        
-        if response.status_code == 200 and len(response.content) > 1000:
-            with open(output_path, 'wb') as f:
-                f.write(response.content)
-            return True
-        elif response.status_code == 429:
-            print(f"DEBUG: Pollinations rate limited (429)")
-        else:
-            print(f"DEBUG: Pollinations returned {response.status_code}")
-    except Exception as e:
-        print(f"DEBUG: Pollinations error: {e}")
+    """
+    Try Pollinations.ai image generation.
+    NEW API (with key): gen.pollinations.ai with Bearer auth - faster, no queue
+    OLD API (no key): image.pollinations.ai - free but slower, may have queue
+    Models fallback: flux → turbo → zimage
+    """
+    global _pollinations_api_key, _last_image_provider
+    
+    models = ['flux', 'turbo', 'zimage']
+    encoded_prompt = urllib.parse.quote(prompt)
+    
+    for model in models:
+        try:
+            # Build URL with params (seed, width, height, nologo preserved)
+            seed_param = f"&seed={seed}" if seed > 0 else ""
+            
+            if _pollinations_api_key:
+                # NEW API with Bearer auth (faster, priority queue)
+                url = f"https://gen.pollinations.ai/image/{encoded_prompt}?model={model}&width={width}&height={height}{seed_param}&nologo=true"
+                headers = {'Authorization': f'Bearer {_pollinations_api_key}'}
+                api_type = "NEW API"
+                print(f"DEBUG: Trying Pollinations NEW API ({model})...")
+                response = requests.get(url, headers=headers, timeout=120)
+            else:
+                # OLD API without auth (free tier, slower)
+                url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?model={model}&width={width}&height={height}{seed_param}&nologo=true"
+                api_type = "OLD API"
+                print(f"DEBUG: Trying Pollinations OLD API ({model})...")
+                response = requests.get(url, timeout=120)
+            
+            if response.status_code == 200 and len(response.content) > 1000:
+                with open(output_path, 'wb') as f:
+                    f.write(response.content)
+                _last_image_provider = f"Pollinations {api_type} ({model})"
+                print(f"DEBUG: Pollinations {model} SUCCESS ({len(response.content)} bytes)")
+                return True
+            elif response.status_code == 429:
+                print(f"DEBUG: Pollinations {model} rate limited (429)")
+            elif response.status_code == 500:
+                # Check for "No active X servers available" error
+                try:
+                    err_msg = response.json().get('error', {}).get('message', '')
+                    if 'No active' in err_msg:
+                        print(f"DEBUG: Pollinations {model} servers offline, trying next...")
+                    else:
+                        print(f"DEBUG: Pollinations {model} error 500: {err_msg[:100]}")
+                except:
+                    print(f"DEBUG: Pollinations {model} returned 500")
+            else:
+                print(f"DEBUG: Pollinations {model} returned {response.status_code}")
+                
+        except requests.exceptions.Timeout:
+            print(f"DEBUG: Pollinations {model} timeout")
+        except Exception as e:
+            print(f"DEBUG: Pollinations {model} error: {e}")
+    
+    print("DEBUG: All Pollinations models failed")
     return False
 
 
 def generate_image_perchance(prompt: str, output_path: str) -> bool:
     """Try Perchance AI as fallback (no seed support)"""
+    global _last_image_provider
     try:
         # Perchance uses different API format
         url = "https://image.perchance.org/api/text-to-image-v2"
@@ -1148,6 +1206,7 @@ def generate_image_perchance(prompt: str, output_path: str) -> bool:
             if len(img_data) > 1000:
                 with open(output_path, 'wb') as f:
                     f.write(img_data)
+                _last_image_provider = "Perchance"
                 return True
     except Exception as e:
         print(f"DEBUG: Perchance error: {e}")
@@ -1159,6 +1218,7 @@ def generate_image_stable_horde(prompt: str, output_path: str, width: int = 512,
     Try Stable Horde - FREE community-powered Stable Diffusion.
     No API key required (uses anonymous access).
     """
+    global _last_image_provider
     try:
         import time as horde_time
         
@@ -1229,6 +1289,7 @@ def generate_image_stable_horde(prompt: str, output_path: str, width: int = 512,
                         if img_resp.status_code == 200 and len(img_resp.content) > 1000:
                             with open(output_path, 'wb') as f:
                                 f.write(img_resp.content)
+                            _last_image_provider = "Stable Horde"
                             print(f"DEBUG: Stable Horde image saved: {output_path}")
                             return True
                 break
@@ -1251,6 +1312,7 @@ def generate_image_stable_horde(prompt: str, output_path: str, width: int = 512,
 
 def generate_image_dezgo(prompt: str, output_path: str, seed: int = -1) -> bool:
     """Try Dezgo as fallback (free tier)"""
+    global _last_image_provider
     try:
         encoded_prompt = urllib.parse.quote(prompt[:300])
         # Dezgo free API
@@ -1263,6 +1325,7 @@ def generate_image_dezgo(prompt: str, output_path: str, seed: int = -1) -> bool:
         if response.status_code == 200 and len(response.content) > 1000:
             with open(output_path, 'wb') as f:
                 f.write(response.content)
+            _last_image_provider = "Dezgo"
             return True
     except Exception as e:
         print(f"DEBUG: Dezgo error: {e}")
@@ -1277,6 +1340,7 @@ def generate_image_prodia_api(prompt: str, output_path: str, seed: int = -1,
     Try Prodia API (requires API key) for image generation.
     Uses SD 1.5 models based on selected art style.
     """
+    global _last_image_provider
     if not prodia_key:
         print("DEBUG: Prodia API key not provided, skipping")
         return False
@@ -1344,6 +1408,7 @@ def generate_image_prodia_api(prompt: str, output_path: str, seed: int = -1,
                     if img_resp.status_code == 200 and len(img_resp.content) > 1000:
                         with open(output_path, 'wb') as f:
                             f.write(img_resp.content)
+                        _last_image_provider = "Prodia"
                         print(f"DEBUG: Prodia image saved: {output_path}")
                         return True
                 break
@@ -1394,22 +1459,21 @@ def generate_image_hybrid(
     print(f"DEBUG: Generating image with seed={seed}")
     
     # Build providers list based on API key availability
-    # If Prodia key is set, use Prodia as PRIMARY (paid = more reliable)
-    # Otherwise, use free providers: Stable Horde → Pollinations → Dezgo → Perchance
+    # PRIORITY ADJUSTED: Pollinations (Fast/Key) -> Pollinations (Free) -> Prodia -> Stable Horde (Slow)
     if _prodia_api_key:
-        print("DEBUG: Prodia API key detected - using Prodia as PRIMARY")
+        print("DEBUG: Prodia API key detected - Primary: Prodia -> Pollinations -> Stable Horde")
         providers = [
+            ("Pollinations", lambda: generate_image_pollinations(full_prompt, width, height, seed, output_path)), # Moved to TOP (Fastest response)
             ("Prodia", lambda: generate_image_prodia_api(full_prompt, output_path, seed, width, height, _prodia_api_key, style_key)),
             ("Stable Horde", lambda: generate_image_stable_horde(full_prompt, output_path, width, height)),
-            ("Pollinations", lambda: generate_image_pollinations(full_prompt, width, height, seed, output_path)),
             ("Dezgo", lambda: generate_image_dezgo(full_prompt, output_path, seed)),
             ("Perchance", lambda: generate_image_perchance(full_prompt, output_path))
         ]
     else:
-        print("DEBUG: No Prodia key - using Stable Horde as PRIMARY (free)")
+        print("DEBUG: No Prodia key - using Pollinations as PRIMARY (New+Old API)")
         providers = [
-            ("Stable Horde", lambda: generate_image_stable_horde(full_prompt, output_path, width, height)),
-            ("Pollinations", lambda: generate_image_pollinations(full_prompt, width, height, seed, output_path)),
+            ("Pollinations", lambda: generate_image_pollinations(full_prompt, width, height, seed, output_path)), # PRIMARY
+            ("Stable Horde", lambda: generate_image_stable_horde(full_prompt, output_path, width, height)), # Fallback (Slow)
             ("Dezgo", lambda: generate_image_dezgo(full_prompt, output_path, seed)),
             ("Perchance", lambda: generate_image_perchance(full_prompt, output_path))
         ]
@@ -1421,7 +1485,9 @@ def generate_image_hybrid(
                 success = provider_fn()
                 
                 if success and os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-                    print(f"DEBUG: Image saved via {name}: {output_path} ({os.path.getsize(output_path)} bytes)")
+                    # _last_image_provider is set by the provider function with details like "Pollinations NEW API (flux)"
+                    provider_detail = _last_image_provider if _last_image_provider else name
+                    print(f"✅ Image via: {provider_detail} | Size: {os.path.getsize(output_path)} bytes")
                     # Add delay after successful request
                     time.sleep(delay_between)
                     return True
@@ -1489,12 +1555,48 @@ def _generate_with_gemini(prompt: str, api_key: str) -> Optional[str]:
         genai.configure(api_key=api_key)
         
         # Model fallback chain - try each until one works
-        model_candidates = [
-            'gemini-2.0-flash',
-            'gemini-1.5-flash',
-            'gemini-1.5-pro',
-            'gemini-pro',
-        ]
+        # Auto-detect available models from API
+        model_candidates = []
+        try:
+            print("DEBUG: Auto-detecting Gemini models...")
+            all_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            
+            # Priority: Newest 2.5 -> 2.0 -> 1.5
+            priority_prefs = [
+                'models/gemini-2.5-pro',
+                'models/gemini-2.5-flash',
+                'models/gemini-2.0-flash',
+                'models/gemini-1.5-pro',
+                'models/gemini-1.5-flash'
+            ]
+            
+            # Add prioritized models if available
+            for pref in priority_prefs:
+                # Check for exact match or suffix match
+                match = next((m for m in all_models if m == pref or m.endswith(f"/{pref}")), None)
+                if match and match not in model_candidates:
+                    model_candidates.append(match)
+            
+            # Fallback if no priority models found (unlikely)
+            if not model_candidates:
+                print("DEBUG: No priority models found, using default fallback list")
+                model_candidates = [
+                    'gemini-2.0-flash',
+                    'gemini-1.5-flash',
+                    'gemini-1.5-pro',
+                    'gemini-pro'
+                ]
+            else:
+                print(f"DEBUG: Selected models: {model_candidates}")
+                
+        except Exception as e:
+            print(f"DEBUG: Model auto-detection failed ({e}), using fallback list")
+            model_candidates = [
+                'gemini-2.0-flash',
+                'gemini-1.5-flash',
+                'gemini-1.5-pro',
+                'gemini-pro'
+            ]
         
         for model_name in model_candidates:
             try:
@@ -1521,6 +1623,115 @@ def _generate_with_gemini(prompt: str, api_key: str) -> Optional[str]:
     except Exception as e:
         print(f"DEBUG: Gemini error: {e}")
         return None
+
+
+
+# ============================================================================
+# DURATION EXTRACTION HELPER
+# ============================================================================
+def extract_duration_from_transcript(transcript: str) -> float:
+    """
+    Extract video duration from transcript timestamps.
+    
+    Looks for timestamp patterns like:
+    [0.00s] Text...
+    [7.04s] More text...
+    [24.44s] Final text
+    
+    Returns the last timestamp as total video duration.
+    Falls back to 30.0 seconds if no timestamps found.
+    
+    Args:
+        transcript: Transcript text with timestamps in [X.XXs] format
+        
+    Returns:
+        float: Video duration in seconds (default: 30.0)
+    """
+    import re
+    try:
+        # Find all timestamp patterns: [0.00s] or [24.44s]
+        timestamps = re.findall(r'\[(\d+\.?\d*)[s\]]', transcript)
+        
+        if timestamps:
+            # Last timestamp = total video duration
+            return float(timestamps[-1])
+    except Exception as e:
+        # If anything fails, use safe fallback
+        print(f"DEBUG: Duration extraction failed: {e}, using default 30s")
+    
+    # Safe fallback for backwards compatibility
+    return 30.0
+
+
+def validate_scene_count(original_duration: float, user_scenes: int) -> tuple:
+    """
+    Validate scene count and provide warnings if outside optimal range.
+    
+    Images in Animator are displayed for the duration of their TTS narration.
+    Optimal range: 2.0s - 5.0s per scene for good visual comprehension and pacing.
+    
+    Args:
+        original_duration: Video duration in seconds (from transcript timestamps)
+        user_scenes: Number of scenes requested by user from GUI
+        
+    Returns:
+        tuple: (words_per_scene: int, warning_message: str or None)
+        
+    Example:
+        >>> validate_scene_count(24.44, 7)
+        (8, None)  # Optimal range, no warning
+        
+        >>> validate_scene_count(24.44, 20)
+        (6, "⚠️ Scene Count Warning...")  # Too many, forced minimum
+    """
+    MIN_SCENE_DURATION = 2.0  # Minimum seconds per scene for visual comprehension
+    MAX_SCENE_DURATION = 5.0  # Maximum before becoming boring/slow
+    MIN_WORDS = 6  # Minimum words for natural narration (one good sentence)
+    
+    # Calculate optimal scene range for this video duration
+    min_scenes = max(3, int(original_duration / MAX_SCENE_DURATION))
+    max_scenes = int(original_duration / MIN_SCENE_DURATION)
+    
+    # Calculate words per scene (2.5 words/second for Indonesian TTS)
+    words_per_scene = int((original_duration / user_scenes) * 2.5)
+    
+    warning = None
+    
+    # Check if too many scenes (images change too fast)
+    if user_scenes > max_scenes:
+        avg_duration = original_duration / user_scenes
+        warning = (
+            f"⚠️ Scene Count Warning:\n"
+            f"  • Requested: {user_scenes} scenes for {original_duration:.1f}s video\n"
+            f"  • Results in: ~{avg_duration:.1f}s per image (TOO FAST!)\n"
+            f"  • Recommended: {min_scenes}-{max_scenes} scenes for optimal pacing\n"
+            f"  • Issue: Images change too quickly for viewer comprehension\n"
+        )
+        # Force minimum words to keep narration natural
+        if words_per_scene < MIN_WORDS:
+            words_per_scene = MIN_WORDS
+            expected_dur = (user_scenes * words_per_scene) / 2.5
+            warning += (
+                f"  • Adjustment: Forcing minimum {MIN_WORDS} words per scene\n"
+                f"  • Expected output: ~{expected_dur:.1f}s total (may exceed target)\n"
+            )
+    
+    # Check if too few scenes (slow paced, OK but inform user)
+    elif user_scenes < min_scenes:
+        avg_duration = original_duration / user_scenes
+        warning = (
+            f"ℹ️ Scene Count Note:\n"
+            f"  • Requested: {user_scenes} scenes for {original_duration:.1f}s video\n"
+            f"  • Results in: ~{avg_duration:.1f}s per image (slow paced)\n"
+            f"  • This is OK for detailed, cinematic storytelling\n"
+            f"  • Each narration will be longer (~{words_per_scene} words per scene)\n"
+        )
+    
+    # Print warning if any
+    if warning:
+        print(warning)
+    
+    return words_per_scene, warning
 
 
 # ============================================================================
@@ -1678,11 +1889,69 @@ Genre-specific rules:
 EXAMPLE of {genre} tone:
 \"{genre_example}\"
 
+
 📋 NARRATION STRUCTURE TEMPLATE (FOLLOW THIS FORMAT!):
 {narration_example if narration_example else "Use 5 sections: [THE HOOK] → [THE DETAIL] → [THE REALIZATION] → [THE CLIMAX] → [THE ENDING]"}
 
-=== SOURCE TRANSCRIPT (use ALL content, this is the maximum length) ===
+=== ⏱️ CRITICAL DURATION CONSTRAINT ===
+
+"""
+        
+        # Extract duration from transcript timestamps
+        original_duration = extract_duration_from_transcript(transcript)
+        
+        # Validate scene count and get word limit with safeguards
+        # This will warn user if they selected too many/few scenes
+        max_words_per_scene, scene_warning = validate_scene_count(
+            original_duration, 
+            num_scenes
+        )
+        target_scenes = num_scenes
+        
+        # Detect if same language for anti-plagiarism
+        same_language = False
+        if language.lower() in ["indonesian", "bahasa", "id", "indo"]:
+            indonesian_markers = ["yang", "dan", "dengan", "pada", "di", "ke", "ini", "itu"]
+            same_language = any(marker in transcript.lower() for marker in indonesian_markers)
+        elif language.lower() in ["english", "en"]:
+            english_markers = [" the ", " a ", " an ", " and ", " with ", " at ", " to "]
+            same_language = any(marker in transcript.lower() for marker in english_markers)
+        
+        # Build duration constraint and anti-plagiarism rules
+        duration_constraint = f"""
+⏱️ CRITICAL DURATION CONSTRAINT:
+- Original video duration: {original_duration:.1f} seconds (extracted from timestamps)
+- You MUST generate exactly {target_scenes} scenes
+- TOTAL narration when spoken: MUST NOT EXCEED {original_duration:.1f} seconds
+- Each scene narration: approximately {max_words_per_scene} words maximum (~3-5 seconds spoken)
+- DO NOT add story details not in original transcript
+- DO NOT expand or elaborate beyond original content
+- ONLY retell what's in the transcript, CONCISELY
+"""
+        
+        if same_language:
+            anti_plagiarism = f"""
+🚨 ANTI-PLAGIARISM CRITICAL (Source and target are SAME language!):
+- You MUST completely REWRITE in your own words
+- Use DIFFERENT sentence structures from the original
+- Use DIFFERENT vocabulary choices  
+- DO NOT copy exact phrases or sentence patterns from transcript
+- Transform the story with {genre} tone and style
+- Make it YOUR narration, not a paraphrase
+"""
+        else:
+            anti_plagiarism = """
+🌐 TRANSLATION REQUIREMENT:
+- Translate naturally and idiomatically
+- Adapt story to target language expression
+- Transform with genre-appropriate tone
+- Maintain facts but use natural native phrasing
+"""
+        
+        prompt += duration_constraint + anti_plagiarism + f"""
+=== SOURCE TRANSCRIPT (use ALL content, respect the {original_duration:.1f}s duration) ===
 {transcript[:15000]}
+
 
 === 🚨 COLD OPEN STRUCTURE (MANDATORY!) ===
 
@@ -1693,7 +1962,7 @@ COLD OPEN means: Start with the CLIMAX/IMPACT first, THEN explain the backstory.
 
 === YOUR TASK: RETELL INTO 5 PARTS with MULTIPLE SCENES EACH ===
 The transcript MUST be retold in EXACTLY 5 PARTS using COLD OPEN structure.
-Each PART contains MULTIPLE SCENES. Each SCENE = 1 short narration (~2-3 seconds) + 1 image.
+Each PART contains MULTIPLE SCENES. Each SCENE = 1 short narration (~{max_words_per_scene} words) + 1 image.
 
 📋 5-PART STRUCTURE:
 - PART 1 [THE HOOK]: Dramatic opening - START WITH CLIMAX/REVELATION!
@@ -1712,13 +1981,13 @@ Distribute scenes NATURALLY across parts (guideline below, can adjust ±1-2):
 
 ⚠️ CRITICAL RULES:
 1. PART 1 [THE HOOK] MUST start with climax/twist - NOT the beginning!
-2. Each scene = 2-3 seconds of image display time
-3. Narration style MUST match genre:
-   - Horror/Sci-Fi: Dark, atmospheric, suspenseful (2-3 sentences per scene)
-   - Documentary/Motivational: Clear, informative, inspiring (2-3 sentences)
-   - Fairy Tale/Children's: Gentle, magical, warm (2-3 sentences)
-   - Comedy/Viral: Punchy, conversational, witty (1-2 sentences)
-   - Brainrot/Brainrot ID: Short, chaotic, meme-speak (1 sentence with slang)
+2. Each scene narration = approximately {max_words_per_scene} words (to fit {original_duration:.1f}s total)
+3. Narration style MUST match genre (keep within {max_words_per_scene} words per scene):
+   - Horror/Sci-Fi: Dark, atmospheric, suspenseful (concise and impactful)
+   - Documentary/Motivational: Clear, informative, inspiring (factual but brief)
+   - Fairy Tale/Children's: Gentle, magical, warm (simple and short)
+   - Comedy/Viral: Punchy, conversational, witty (ultra-concise)
+   - Brainrot/Brainrot ID: Short, chaotic, meme-speak (minimal words, max impact)
 4. scene_visual MUST match what the narration describes
 5. Sound like a HUMAN telling a story to a friend, NOT a robot reading news!
 
@@ -2932,7 +3201,9 @@ def generate_animation_v2(
             
             if progress_callback:
                 prog = 0.2 + (0.3 * (i + 1) / len(scenes))
-                progress_callback(prog, f"🎨 Generated image {i+1}/{len(scenes)}")
+                # Include provider info in log for transparency
+                provider_info = f" via {_last_image_provider}" if _last_image_provider else ""
+                progress_callback(prog, f"🎨 Generated image {i+1}/{len(scenes)}{provider_info}")
         
         # Step 3: Generate audio (TTS)
         if progress_callback:
