@@ -1,48 +1,43 @@
-# GlobalViral App
-<p align="center">
-  <img src="logo.png" width="200" alt="GlobalViral Clipper">
-</p>
+# 🚀 GlobalViral App
 
-**Repurpose YouTube videos into viral TikTok/Reels/Shorts clips with AI-powered automation.**
+<p align="center">
+  <img src="logo.png" width="180" alt="GlobalViral App">
+  <br><br>
+  <b>Repurpose YouTube videos into viral TikTok/Reels/Shorts with AI automation</b>
+  <br><br>
+  <a href="#-features">Features</a> •
+  <a href="#-installation">Installation</a> •
+  <a href="#-usage">Usage</a> •
+  <a href="#-api-keys">API Keys</a>
+</p>
 
 ---
 
 ## ✨ Features
 
-### 🎬 Viral Clipper Tab
-- Download and process YouTube videos
-- Automatic clip extraction based on engagement detection
-- Video filters with 10 genre-matched combinations
-- Caption styles: Karaoke, Bounce, Fade, and more
+| Tab | Description |
+|-----|-------------|
+| 🎬 **Viral Clipper** | Extract highlight clips from YouTube videos with smart engagement detection |
+| 🎭 **Character Edit** | Face-based highlight reel with character tracking |
+| ✨ **AI Animator** | Generate AI animations from transcripts with 2.5D parallax effects |
+| 🔑 **API Settings** | Configure API keys for AI services |
+| 📚 **Docs** | Built-in Indonesian tutorial |
 
-### ✨ AI Animator Tab
-- AI-generated animations from transcripts
-- 10 genre templates (Documentary, Horror, Comedy, etc.)
-- 10 art styles (Ghibli Anime, Realistic, Vintage, etc.)
-- 5-Part Cold Open structure for viral storytelling
-- 2.5D parallax animation effects
-- Multi-language support (Indonesian, English)
-- Edge-TTS dubbing with multiple voices
-
-### 🎭 Character Edit Tab
-- Face-based highlight reel generation
-- Character detection and tracking
-- Automatic scene compilation
+### 🎨 AI Animator Highlights
+- 10 genre templates (Documentary, Horror, Comedy, Romance...)
+- 10 art styles (Ghibli Anime, Realistic, Vintage, Cyberpunk...)
+- 5-Part Cold Open storytelling structure
+- Edge-TTS dubbing (Indonesian, English voices)
+- 10 video filter combinations
 
 ---
 
 ## 🚀 Installation
 
-### Requirements
-- Python 3.10+
-- FFmpeg (bundled in `bin/`)
-- Windows 10/11
-
-### Setup
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/globalviral-clipper.git
-cd globalviral-clipper
+git clone https://github.com/matiloanjing/Global-Viral-App.git
+cd Global-Viral-App
 
 # Install dependencies
 pip install -r requirements.txt
@@ -54,60 +49,55 @@ python main.py
 ### Build EXE
 ```bash
 python build_installer.py
+# Output: dist/KilatCodeClipper.exe
 ```
-Output: `dist/KilatCodeClipper.exe`
 
 ---
 
-## 🔑 API Keys Required
+## 🔑 API Keys
 
 Configure in **API Settings** tab:
 
 | API | Purpose | Required |
-|-----|---------|----------|
-| Groq | Transcription | ✅ Yes |
-| Gemini | Story generation | Optional (falls back to Groq) |
-| Pollinations (Primary) | Image generation | Optional (Prodia fallback available) |
+|-----|---------|:--------:|
+| Groq | Transcription | ✅ |
+| Gemini | Story generation | Optional |
+| Prodia | Image backup | Optional |
 
-**Free APIs (no key needed):**
-- Pollinations.ai - Image generation
-- Edge-TTS - Text-to-speech
-
----
-
-## 📁 Project Structure
-
-```
-Global-Viral-App/
-├── main.py              # Main app + UI (Gradio)
-├── animator_v2.py       # AI Animator engine
-├── character_edit.py    # Character Edit engine
-├── license.py           # License management
-├── build_installer.py   # PyInstaller build script
-├── requirements.txt     # Python dependencies
-├── bin/                 # Bundled FFmpeg
-├── sfx/                 # Sound effects
-├── assets/              # UI assets
-```
+**Free (no key needed):** Pollinations.ai, Edge-TTS
 
 ---
 
 ## 🎯 Usage
 
-1. **Launch**: Run `python main.py` or `KilatCodeClipper.exe`
-2. **Select Tab**: Choose Viral Clipper, AI Animator, or Character Edit
-3. **Input**: Paste YouTube URL or upload local video
-4. **Configure**: Select genre, style, voice, filter
-5. **Generate**: Click process button and wait
-6. **Export**: Download generated video
+1. Launch `python main.py` or `KilatCodeClipper.exe`
+2. Select tab: Viral Clipper / AI Animator / Character Edit
+3. Paste YouTube URL or upload local video
+4. Configure: genre, style, voice, filter
+5. Click generate and wait
+6. Download result
 
 ---
 
-## ⚠️ Important Notes
+## 📁 Structure
 
-- **Antivirus**: Add exception for Python if image generation fails
-- **FFmpeg**: Make sure `bin/ffmpeg.exe` exists
-- **Internet**: Required for API calls and YouTube downloads
+```
+├── main.py              # Main UI (Gradio)
+├── animator_v2.py       # AI Animator engine
+├── character_edit.py    # Character Edit engine
+├── license.py           # License management
+├── build_installer.py   # Build script
+├── bin/                 # FFmpeg binaries
+└── sfx/                 # Sound effects
+```
+
+---
+
+## ⚠️ Notes
+
+- Add Python exception in antivirus if image gen fails
+- Requires internet for API calls
+- FFmpeg bundled in `bin/`
 
 ---
 
@@ -116,15 +106,9 @@ Global-Viral-App/
 Proprietary - License key required for activation.
 
 ---
-```bash
-██╗  ██╗██╗██╗      █████╗ ████████╗ ██████╗ ██████╗ ██████╗ ███████╗
-██║ ██╔╝██║██║     ██╔══██╗╚══██╔══╝██╔════╝██╔═══██╗██╔══██╗██╔════╝
-█████╔╝ ██║██║     ███████║   ██║   ██║     ██║   ██║██║  ██║█████╗  
-██╔═██╗ ██║██║     ██╔══██║   ██║   ██║     ██║   ██║██║  ██║██╔══╝  
-██║  ██╗██║███████╗██║  ██║   ██║   ╚██████╗╚██████╔╝██████╔╝███████╗
-╚═╝  ╚═╝╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
-                                                                     
-🚀 Handcrafted by KilatCode Studio
-Copyright © 2025 KilatCode. All rights reserved.
-```
-**Made with ❤️ for content creators**
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Made%20with-❤️-red" alt="Made with love">
+  <br><br>
+  <b>🚀 KilatCode Studio © 2025</b>
+</p>

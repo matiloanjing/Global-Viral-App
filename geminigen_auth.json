@@ -1,0 +1,13 @@
+{
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NjcxMTc5MjMsInN1YiI6ImVhZmNjMmU4LWU0ZGItMTFmMC1hMTI3LTAyYzY1NWNlMGVkOCJ9.d0oowjTjMST2m1y8jjaWrOHuLZNCfNicNc-qQALnFbM",
+    "refresh_token": "Im1pdGl0dWhlQG1rZXlhLmNvbSI.aVLC4w.W-ZZNF7Jp0dahQXXu3RzPYh4EZ4",
+    "user": {
+        "id": 370266,
+        "uuid": "eafcc2e8-e4db-11f0-a127-02c655ce0ed8",
+        "email": "mitituhe@mkeya.com",
+        "full_name": "garoul",
+        "available_credit": 40,
+        "plan": "Free Trial plan"
+    },
+    "expires_at": 1767117923
+}

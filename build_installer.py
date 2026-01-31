@@ -42,7 +42,10 @@ REQUIRED_PACKAGES = [
     "edge-tts",
     "ffmpeg-python",
     "pillow",
-    "requests"
+    "requests",
+    "google-api-python-client",
+    "google-auth-oauthlib",
+    "google-auth-httplib2"
 ]
 
 
@@ -245,6 +248,7 @@ def step_4_compile_exe():
         f"--add-data=sfx;sfx",  # Bundle SFX audio files
         f"--add-data=animator_v2.py;.",  # Bundle animator module
         f"--add-data=character_edit.py;.",  # Bundle character edit module
+        f"--add-data=youtube_poster.py;.",  # Bundle YouTube poster module
         f"--add-data={ctk_path};customtkinter",
     ]
     

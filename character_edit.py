@@ -478,18 +478,41 @@ def analyze_with_gemini(
                 m.name for m in genai.list_models() 
                 if 'generateContent' in m.supported_generation_methods
             ]
-            # Prioritize: flash models first, then pro models
-            flash_models = [m for m in my_models if 'flash' in m.lower()]
-            pro_models = [m for m in my_models if 'pro' in m.lower()]
-            candidates = flash_models + pro_models
             
-            if candidates:
-                model_name = candidates[0]
-                # Remove 'models/' prefix if present
-                if model_name.startswith('models/'):
-                    model_name = model_name[7:]
+            # Optimized Priority: Gemini 2.5 (Pro/Flash) -> 2.0 -> 1.5
+            priority_prefs = [
+                'models/gemini-2.5-pro',
+                'models/gemini-2.5-flash',
+                'models/gemini-2.0-flash',
+                'models/gemini-1.5-pro',
+                'models/gemini-1.5-flash'
+            ]
+            
+            model_name = None
+            
+            # 1. Try to find a priority model
+            for pref in priority_prefs:
+                match = next((m for m in my_models if m == pref or m.endswith(f"/{pref}")), None)
+                if match:
+                    model_name = match
+                    break
+            
+            # 2. Fallback to any flash/pro model if no priority match
+            if not model_name:
+                flash_models = [m for m in my_models if 'flash' in m.lower()]
+                pro_models = [m for m in my_models if 'pro' in m.lower()]
+                candidates = flash_models + pro_models
+                if candidates:
+                    model_name = candidates[0]
+
+            if model_name:
+                # Remove 'models/' prefix if present (optional, usually handled by SDK)
+                clean_name = model_name
+                if clean_name.startswith('models/'):
+                    clean_name = clean_name[7:]
+                    
                 model = genai.GenerativeModel(
-                    model_name,
+                    clean_name,
                     generation_config=genai.GenerationConfig(temperature=0)
                 )
                 print(f"[CharacterEdit] Using Gemini model: {model_name}")

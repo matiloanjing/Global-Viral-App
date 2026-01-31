@@ -68,7 +68,7 @@ except ImportError:
 
 # Animator v2 module (improved)
 try:
-    from animator_v2 import generate_animation_v2, GENRES as GENRES_V2, VISUAL_STYLES as STYLES_V2, VOICE_OPTIONS as VOICES_V2, FILTER_EFFECTS, detect_gpu_encoder, set_prodia_api_key, detect_sfx_keywords, mix_audio_with_sfx, SFX_KEYWORDS
+    from animator_v2 import generate_animation_v2, GENRES as GENRES_V2, VISUAL_STYLES as STYLES_V2, VOICE_OPTIONS as VOICES_V2, FILTER_EFFECTS, detect_gpu_encoder, set_prodia_api_key, set_pollinations_api_key, detect_sfx_keywords, mix_audio_with_sfx, SFX_KEYWORDS
     HAS_ANIMATOR_V2 = True
 except ImportError:
     HAS_ANIMATOR_V2 = False
@@ -81,6 +81,14 @@ try:
 except ImportError:
     HAS_CHARACTER_EDIT = False
     HAS_FACE_RECOGNITION = False
+
+# YouTube Poster module
+try:
+    from youtube_poster import YouTubePoster, generate_youtube_caption, HAS_YOUTUBE_API
+    HAS_YOUTUBE_POSTER = True
+except ImportError:
+    HAS_YOUTUBE_POSTER = False
+    HAS_YOUTUBE_API = False
 
 
 # ============================================================================
@@ -1772,6 +1780,15 @@ class KilatCodeClipperApp(ctk.CTk):
                     self._log_char(f"[Complete] Saved to: {output_path}")
                     self.after(0, lambda: self.char_status_label.configure(text=f"✅ Saved to Desktop/CharacterEdits"))
                     self.after(0, lambda: messagebox.showinfo("Success", f"Character Edit saved to:\n{output_path}"))
+                    
+                    # Offer YouTube upload
+                    if HAS_YOUTUBE_POSTER:
+                        self.after(100, lambda: self._show_youtube_upload_dialog(
+                            video_path=output_path,
+                            default_title=f"🎬 {character_name} Best Moments",
+                            default_desc=f"Character highlight reel featuring {character_name}.\n\n#shorts #viral #character",
+                            default_tags=["shorts", "viral", "character", character_name.lower().replace(" ", "")]
+                        ))
                 else:
                     self._log_char("[Error] Failed to generate character edit")
                     self.after(0, lambda: self.char_status_label.configure(text="❌ Generation failed"))
@@ -2245,6 +2262,7 @@ class KilatCodeClipperApp(ctk.CTk):
         """Save API keys to config file"""
         self.config["groq_api_key"] = self.groq_entry.get().strip()
         self.config["gemini_api_key"] = self.gemini_entry.get().strip()
+        self.config["pollinations_api_key"] = self.pollinations_entry.get().strip()
         self.config["prodia_api_key"] = self.prodia_entry.get().strip()
         
         if save_config(self.config):
@@ -2301,6 +2319,9 @@ class KilatCodeClipperApp(ctk.CTk):
         if HAS_ANIMATOR_V2:
             prodia_key = self.config.get("prodia_api_key", "")
             set_prodia_api_key(prodia_key)
+            # Set Pollinations API key for primary image generation
+            pollinations_key = self.config.get("pollinations_api_key", "")
+            set_pollinations_api_key(pollinations_key)
         
         # Start thread with ALL parameters
         thread = threading.Thread(
@@ -2430,9 +2451,20 @@ class KilatCodeClipperApp(ctk.CTk):
                         for widget in self.scenes_preview_frame.winfo_children():
                             widget.destroy()
                         
+                        # Enable scrolling for preview frame (to fit YouTube panel)
+                        self.scenes_preview_frame.pack_propagate(True)
+                        
+                        # Create scrollable inner frame
+                        scroll_inner = ctk.CTkScrollableFrame(
+                            self.scenes_preview_frame,
+                            fg_color="transparent",
+                            scrollbar_button_color="#374151"
+                        )
+                        scroll_inner.pack(fill="both", expand=True)
+                        
                         # Add video info label
                         preview_label = ctk.CTkLabel(
-                            self.scenes_preview_frame,
+                            scroll_inner,
                             text=f"🎬 {output_filename}",
                             font=("Arial", 14, "bold"),
                             text_color="#10B981"
@@ -2442,7 +2474,7 @@ class KilatCodeClipperApp(ctk.CTk):
                         # Add file size info
                         file_size = os.path.getsize(final_output_path) / (1024 * 1024)
                         info_label = ctk.CTkLabel(
-                            self.scenes_preview_frame,
+                            scroll_inner,
                             text=f"📦 Size: {file_size:.1f} MB",
                             font=("Arial", 12),
                             text_color="#9CA3AF"
@@ -2451,7 +2483,7 @@ class KilatCodeClipperApp(ctk.CTk):
                         
                         # Add "Open Folder" button in preview
                         open_folder_btn = ctk.CTkButton(
-                            self.scenes_preview_frame,
+                            scroll_inner,
                             text="📂 Open Output Folder",
                             command=lambda: os.startfile(OUTPUT_FOLDER) if os.name == 'nt' else None,
                             fg_color="#3B82F6",
@@ -2460,6 +2492,161 @@ class KilatCodeClipperApp(ctk.CTk):
                             width=180
                         )
                         open_folder_btn.pack(pady=10)
+                        
+                        # ======== YOUTUBE POST PANEL ========
+                        if HAS_YOUTUBE_POSTER:
+                            # Separator
+                            sep = ctk.CTkFrame(scroll_inner, height=2, fg_color="#374151")
+                            sep.pack(fill="x", pady=15, padx=10)
+                            
+                            # YouTube header
+                            yt_header = ctk.CTkLabel(
+                                scroll_inner,
+                                text="📺 Post to YouTube",
+                                font=("Arial", 14, "bold"),
+                                text_color="#FF0000"
+                            )
+                            yt_header.pack(pady=(0, 10))
+                            
+                            # Generate AI caption
+                            self._yt_caption_data = {}
+                            gemini_key = self.config.get("gemini_api_key", "")
+                            
+                            if gemini_key and transcript:
+                                try:
+                                    caption_result = generate_youtube_caption(transcript, "id", gemini_key)
+                                    if "error" not in caption_result:
+                                        self._yt_caption_data = caption_result
+                                except Exception as e:
+                                    print(f"Caption gen error: {e}")
+                            
+                            # Default values if caption generation failed
+                            default_title = self._yt_caption_data.get("title", f"🔥 {genre} Story - AI Generated")
+                            default_desc = self._yt_caption_data.get("description", "AI-generated animated story. Subscribe for more!")
+                            default_tags = ", ".join(self._yt_caption_data.get("tags", ["shorts", "viral", "ai"]))
+                            
+                            # Title
+                            ctk.CTkLabel(scroll_inner, text="Title:", font=("Arial", 11), text_color="#9CA3AF").pack(anchor="w", padx=10)
+                            self.yt_title_entry = ctk.CTkEntry(scroll_inner, width=280, height=30, placeholder_text="Video title...")
+                            self.yt_title_entry.pack(fill="x", padx=10, pady=(0, 5))
+                            self.yt_title_entry.insert(0, default_title[:100])
+                            
+                            # Description
+                            ctk.CTkLabel(scroll_inner, text="Description:", font=("Arial", 11), text_color="#9CA3AF").pack(anchor="w", padx=10)
+                            self.yt_desc_text = ctk.CTkTextbox(scroll_inner, width=280, height=60)
+                            self.yt_desc_text.pack(fill="x", padx=10, pady=(0, 5))
+                            self.yt_desc_text.insert("0.0", default_desc[:500])
+                            
+                            # Tags
+                            ctk.CTkLabel(scroll_inner, text="Tags:", font=("Arial", 11), text_color="#9CA3AF").pack(anchor="w", padx=10)
+                            self.yt_tags_entry = ctk.CTkEntry(scroll_inner, width=280, height=30, placeholder_text="tag1, tag2, tag3...")
+                            self.yt_tags_entry.pack(fill="x", padx=10, pady=(0, 10))
+                            self.yt_tags_entry.insert(0, default_tags[:200])
+                            
+                            # Settings row
+                            settings_frame = ctk.CTkFrame(scroll_inner, fg_color="transparent")
+                            settings_frame.pack(fill="x", padx=10, pady=(0, 10))
+                            
+                            # Privacy dropdown
+                            ctk.CTkLabel(settings_frame, text="Privacy:", font=("Arial", 10), text_color="#6B7280").pack(side="left")
+                            self.yt_privacy_var = ctk.StringVar(value="private")
+                            self.yt_privacy_dropdown = ctk.CTkOptionMenu(
+                                settings_frame, values=["private", "unlisted", "public"],
+                                variable=self.yt_privacy_var, width=100, height=28
+                            )
+                            self.yt_privacy_dropdown.pack(side="left", padx=(5, 15))
+                            
+                            # Not for kids checkbox
+                            self.yt_not_kids_var = ctk.BooleanVar(value=True)
+                            self.yt_not_kids_check = ctk.CTkCheckBox(
+                                settings_frame, text="Not for Kids", variable=self.yt_not_kids_var,
+                                font=("Arial", 10), checkbox_width=18, checkbox_height=18
+                            )
+                            self.yt_not_kids_check.pack(side="left")
+                            
+                            # Buttons row
+                            btn_frame = ctk.CTkFrame(scroll_inner, fg_color="transparent")
+                            btn_frame.pack(fill="x", padx=10, pady=(0, 10))
+                            
+                            # Regenerate caption button
+                            def regenerate_caption():
+                                if gemini_key and transcript:
+                                    try:
+                                        result = generate_youtube_caption(transcript, "id", gemini_key)
+                                        if "error" not in result:
+                                            self.yt_title_entry.delete(0, "end")
+                                            self.yt_title_entry.insert(0, result.get("title", "")[:100])
+                                            self.yt_desc_text.delete("0.0", "end")
+                                            self.yt_desc_text.insert("0.0", result.get("description", "")[:500])
+                                            self.yt_tags_entry.delete(0, "end")
+                                            self.yt_tags_entry.insert(0, ", ".join(result.get("tags", []))[:200])
+                                    except Exception as e:
+                                        messagebox.showerror("Error", f"Caption regeneration failed: {e}")
+                            
+                            regen_btn = ctk.CTkButton(
+                                btn_frame, text="🔄 Regenerate",
+                                command=regenerate_caption,
+                                width=100, height=32,
+                                fg_color="#4B5563", hover_color="#374151"
+                            )
+                            regen_btn.pack(side="left", padx=(0, 10))
+                            
+                            # Upload to YouTube button
+                            def upload_to_youtube():
+                                try:
+                                    poster = YouTubePoster()
+                                    if not poster.is_authenticated():
+                                        messagebox.showwarning("Not Connected", "Please connect YouTube in API Settings first.")
+                                        return
+                                    
+                                    # Get values
+                                    title = self.yt_title_entry.get()[:100]
+                                    description = self.yt_desc_text.get("0.0", "end").strip()[:5000]
+                                    tags = [t.strip() for t in self.yt_tags_entry.get().split(",") if t.strip()]
+                                    privacy = self.yt_privacy_var.get()
+                                    made_for_kids = not self.yt_not_kids_var.get()
+                                    
+                                    self.yt_upload_btn.configure(state="disabled", text="⏳ Uploading...")
+                                    self.update()
+                                    
+                                    # Upload in thread
+                                    def do_upload():
+                                        result = poster.upload_video(
+                                            video_path=final_output_path,
+                                            title=title,
+                                            description=description,
+                                            tags=tags,
+                                            privacy=privacy,
+                                            made_for_kids=made_for_kids
+                                        )
+                                        
+                                        def show_result():
+                                            if result.get("success"):
+                                                self.yt_upload_btn.configure(text="✅ Uploaded!", fg_color="#10B981")
+                                                messagebox.showinfo(
+                                                    "Upload Success!",
+                                                    f"Video uploaded to YouTube!\n\n{result.get('video_url', '')}"
+                                                )
+                                            else:
+                                                self.yt_upload_btn.configure(state="normal", text="🚀 Upload", fg_color="#FF0000")
+                                                messagebox.showerror("Upload Failed", result.get("error", "Unknown error"))
+                                        
+                                        self.after(0, show_result)
+                                    
+                                    threading.Thread(target=do_upload, daemon=True).start()
+                                    
+                                except Exception as e:
+                                    messagebox.showerror("Error", f"Upload failed: {e}")
+                                    self.yt_upload_btn.configure(state="normal", text="🚀 Upload", fg_color="#FF0000")
+                            
+                            self.yt_upload_btn = ctk.CTkButton(
+                                btn_frame, text="🚀 Upload to YouTube",
+                                command=upload_to_youtube,
+                                width=150, height=32,
+                                fg_color="#FF0000", hover_color="#CC0000",
+                                font=("Arial", 12, "bold")
+                            )
+                            self.yt_upload_btn.pack(side="left")
                         
                         print("DEBUG: Video preview updated")
                     
@@ -2786,8 +2973,8 @@ class KilatCodeClipperApp(ctk.CTk):
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
-                # Find the downloaded file
-                for ext in ['m4a', 'mp3', 'webm', 'opus']:
+                # Find the downloaded file - include mp4 since some YouTube videos only have combined formats
+                for ext in ['m4a', 'mp3', 'webm', 'opus', 'mp4']:
                     potential_path = os.path.join(output_folder, f"audio.{ext}")
                     if os.path.isfile(potential_path):
                         return potential_path
@@ -2910,7 +3097,26 @@ class KilatCodeClipperApp(ctk.CTk):
         
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            # Auto-detect best model
+            try:
+                my_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                priority_prefs = ['models/gemini-2.5-pro', 'models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-pro']
+                model_name = "gemini-2.5-flash" # Default fallback
+                
+                # Try to find a priority model
+                for pref in priority_prefs:
+                    match = next((m for m in my_models if m == pref or m.endswith(f"/{pref}")), None)
+                    if match:
+                        model_name = match
+                        break
+                
+                # Remove prefix for instantiation
+                if model_name.startswith('models/'): model_name = model_name[7:]
+                
+                model = genai.GenerativeModel(model_name)
+                print(f"[Clipper] Using Gemini model: {model_name}")
+            except:
+                model = genai.GenerativeModel('gemini-2.5-flash')
             
             # Get clip settings from sliders
             min_clips = self.min_clips_var.get()
@@ -2999,7 +3205,26 @@ JSON Structure:
             self._update_progress(0.5, f"🧠 Analyzing {len(frames)} frames with AI...")
             
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            # Auto-detect best model
+            try:
+                my_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                priority_prefs = ['models/gemini-2.5-flash', 'models/gemini-2.0-flash', 'models/gemini-1.5-flash'] # Prefer flash for vision speed
+                model_name = "gemini-2.5-flash" # Default fallback
+                
+                # Try to find a priority model
+                for pref in priority_prefs:
+                    match = next((m for m in my_models if m == pref or m.endswith(f"/{pref}")), None)
+                    if match:
+                        model_name = match
+                        break
+                
+                # Remove prefix for instantiation
+                if model_name.startswith('models/'): model_name = model_name[7:]
+                
+                model = genai.GenerativeModel(model_name)
+                print(f"[Clipper] Using Gemini model for Vision: {model_name}")
+            except:
+                model = genai.GenerativeModel('gemini-2.5-flash')
             
             # Get clip settings
             min_clips = self.min_clips_var.get()
@@ -3243,6 +3468,17 @@ Return ONLY a valid JSON Array. No markdown, no explanation.
                 self.after(0, lambda: messagebox.showinfo(
                     "Success", f"Rendered {rendered_count} clips to:\n{output_folder}"
                 ))
+                
+                # Offer YouTube upload for rendered clips
+                if HAS_YOUTUBE_POSTER:
+                    # Collect all rendered video paths
+                    rendered_paths = []
+                    for f in os.listdir(output_folder):
+                        if f.endswith(".mp4"):
+                            rendered_paths.append(os.path.join(output_folder, f))
+                    
+                    if rendered_paths:
+                        self.after(200, lambda: self._show_clipper_youtube_dialog(rendered_paths))
             else:
                 self._update_progress(0, f"❌ Rendering failed! No clips were saved.")
                 self.after(0, lambda: messagebox.showerror(
@@ -3846,6 +4082,27 @@ Return ONLY a valid JSON Array. No markdown, no explanation.
         self.gemini_entry.pack(fill="x")
         self.gemini_entry.insert(0, self.config.get("gemini_api_key", ""))
         
+        # Pollinations API Key (PRIMARY for AI Image Generation)
+        pollinations_frame = ctk.CTkFrame(card_inner, fg_color="transparent")
+        pollinations_frame.pack(fill="x", pady=20)
+        
+        ctk.CTkLabel(
+            pollinations_frame, text="🎨 Pollinations API Key (Recommended)",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#ffffff"
+        ).pack(anchor="w")
+        
+        ctk.CTkLabel(
+            pollinations_frame, text="Primary image generation - get free key at enter.pollinations.ai",
+            font=ctk.CTkFont(size=11),
+            text_color="#6B7280"
+        ).pack(anchor="w", pady=(0, 5))
+        
+        self.pollinations_entry = ctk.CTkEntry(pollinations_frame, width=500, height=40, show="•",
+                                          placeholder_text="sk_xxxxxxxxxxxxxxxxxxxxxxxxxx")
+        self.pollinations_entry.pack(fill="x")
+        self.pollinations_entry.insert(0, self.config.get("pollinations_api_key", ""))
+        
         # Prodia API Key (for AI Image Generation fallback)
         prodia_frame = ctk.CTkFrame(card_inner, fg_color="transparent")
         prodia_frame.pack(fill="x", pady=20)
@@ -3866,6 +4123,59 @@ Return ONLY a valid JSON Array. No markdown, no explanation.
                                           placeholder_text="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
         self.prodia_entry.pack(fill="x")
         self.prodia_entry.insert(0, self.config.get("prodia_api_key", ""))
+        
+        # YouTube Integration Section
+        if HAS_YOUTUBE_POSTER:
+            youtube_frame = ctk.CTkFrame(card_inner, fg_color="transparent")
+            youtube_frame.pack(fill="x", pady=20)
+            
+            ctk.CTkLabel(
+                youtube_frame, text="📺 YouTube Integration",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                text_color="#ffffff"
+            ).pack(anchor="w")
+            
+            ctk.CTkLabel(
+                youtube_frame, text="Connect YouTube account for auto-post after render",
+                font=ctk.CTkFont(size=11),
+                text_color="#6B7280"
+            ).pack(anchor="w", pady=(0, 10))
+            
+            # YouTube connection status and button frame
+            yt_btn_frame = ctk.CTkFrame(youtube_frame, fg_color="transparent")
+            yt_btn_frame.pack(anchor="w")
+            
+            self.youtube_status_label = ctk.CTkLabel(
+                yt_btn_frame, text="⚪ Not Connected",
+                font=ctk.CTkFont(size=12),
+                text_color="#9CA3AF"
+            )
+            self.youtube_status_label.pack(side="left", padx=(0, 15))
+            
+            self.youtube_connect_btn = ctk.CTkButton(
+                yt_btn_frame, text="🔗 Connect YouTube",
+                command=self._connect_youtube,
+                width=180, height=35,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                fg_color="#FF0000",
+                hover_color="#CC0000",
+                corner_radius=8
+            )
+            self.youtube_connect_btn.pack(side="left")
+            
+            self.youtube_disconnect_btn = ctk.CTkButton(
+                yt_btn_frame, text="Disconnect",
+                command=self._disconnect_youtube,
+                width=100, height=35,
+                font=ctk.CTkFont(size=11),
+                fg_color="#4B5563",
+                hover_color="#374151",
+                corner_radius=8
+            )
+            self.youtube_disconnect_btn.pack(side="left", padx=(10, 0))
+            
+            # Check current YouTube connection status
+            self._check_youtube_status()
         
         # Save Button
         self.save_keys_btn = ctk.CTkButton(
@@ -3894,11 +4204,428 @@ Return ONLY a valid JSON Array. No markdown, no explanation.
         
         ctk.CTkLabel(
             info_inner, 
-            text="• Groq: https://console.groq.com/keys\n• Gemini: https://aistudio.google.com/app/apikey\n• Prodia: https://app.prodia.com/api",
+            text="• Groq: https://console.groq.com/keys\n• Gemini: https://aistudio.google.com/app/apikey\n• Pollinations: https://enter.pollinations.ai\n• Prodia: https://app.prodia.com/api",
             font=ctk.CTkFont(size=11),
             text_color="#9CA3AF",
             justify="left"
         ).pack(anchor="w", pady=(5, 0))
+    
+    def _check_youtube_status(self):
+        """Check if YouTube is connected and update status label"""
+        if not HAS_YOUTUBE_POSTER:
+            return
+        
+        try:
+            self.youtube_poster = YouTubePoster()
+            if self.youtube_poster.is_authenticated():
+                channel_info = self.youtube_poster.get_channel_info()
+                if channel_info:
+                    self.youtube_status_label.configure(
+                        text=f"🟢 Connected: {channel_info['channel_name']}",
+                        text_color="#10B981"
+                    )
+                    self.youtube_connect_btn.configure(state="disabled")
+                else:
+                    self.youtube_status_label.configure(
+                        text="🟢 Connected",
+                        text_color="#10B981"
+                    )
+                    self.youtube_connect_btn.configure(state="disabled")
+            else:
+                self.youtube_status_label.configure(
+                    text="⚪ Not Connected",
+                    text_color="#9CA3AF"
+                )
+                self.youtube_connect_btn.configure(state="normal")
+        except Exception as e:
+            self.youtube_status_label.configure(
+                text=f"⚠️ Error: {str(e)[:30]}",
+                text_color="#EF4444"
+            )
+    
+    def _connect_youtube(self):
+        """Connect YouTube account via OAuth"""
+        if not HAS_YOUTUBE_POSTER:
+            messagebox.showerror("Error", "YouTube module not available")
+            return
+        
+        try:
+            self.youtube_connect_btn.configure(state="disabled", text="🔄 Connecting...")
+            self.update()
+            
+            self.youtube_poster = YouTubePoster()
+            
+            # Check for client_secrets.json
+            secrets_path = self.youtube_poster.get_client_secrets_path()
+            if not secrets_path:
+                messagebox.showwarning(
+                    "Client Secrets Required",
+                    "Please place client_secrets.json in the app folder.\n\n"
+                    "How to get it:\n"
+                    "1. Go to console.cloud.google.com\n"
+                    "2. Create project / Enable YouTube Data API v3\n"
+                    "3. Create OAuth 2.0 credentials (Desktop App)\n"
+                    "4. Download client_secrets.json\n"
+                    "5. Place in app folder"
+                )
+                self.youtube_connect_btn.configure(state="normal", text="🔗 Connect YouTube")
+                return
+            
+            # Run OAuth flow
+            if self.youtube_poster.authenticate():
+                self._check_youtube_status()
+                messagebox.showinfo("Success", "YouTube account connected successfully!")
+            else:
+                messagebox.showerror("Error", "Failed to connect YouTube account")
+                self.youtube_connect_btn.configure(state="normal", text="🔗 Connect YouTube")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"YouTube connection failed: {e}")
+            self.youtube_connect_btn.configure(state="normal", text="🔗 Connect YouTube")
+    
+    def _disconnect_youtube(self):
+        """Disconnect YouTube account"""
+        if not HAS_YOUTUBE_POSTER:
+            return
+        
+        try:
+            if messagebox.askyesno("Disconnect", "Are you sure you want to disconnect YouTube?"):
+                self.youtube_poster = YouTubePoster()
+                self.youtube_poster.disconnect()
+                self.youtube_status_label.configure(
+                    text="⚪ Not Connected",
+                    text_color="#9CA3AF"
+                )
+                self.youtube_connect_btn.configure(state="normal", text="🔗 Connect YouTube")
+                messagebox.showinfo("Disconnected", "YouTube account disconnected")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to disconnect: {e}")
+    
+    def _show_clipper_youtube_dialog(self, video_paths: list):
+        """Show dialog to select which clips to upload to YouTube"""
+        if not HAS_YOUTUBE_POSTER or not video_paths:
+            return
+        
+        # Ask if user wants to upload
+        if not messagebox.askyesno("Upload to YouTube?", f"Do you want to upload {len(video_paths)} clip(s) to YouTube?"):
+            return
+        
+        # Check connection
+        try:
+            poster = YouTubePoster()
+            if not poster.is_authenticated():
+                messagebox.showwarning("Not Connected", "Please connect YouTube in API Settings first.")
+                return
+        except:
+            return
+        
+        # Create selection dialog
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("📺 Select Clips to Upload")
+        dialog.geometry("500x500")
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() - 500) // 2
+        y = (dialog.winfo_screenheight() - 500) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        frame = ctk.CTkFrame(dialog, fg_color="#1a1a2e")
+        frame.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        ctk.CTkLabel(frame, text="🎬 Select Clips to Upload", font=("Arial", 16, "bold")).pack(pady=10)
+        ctk.CTkLabel(frame, text=f"Found {len(video_paths)} rendered clips. Select which to upload:", 
+                     font=("Arial", 11), text_color="#9CA3AF").pack()
+        
+        # Scrollable list with checkboxes
+        scroll = ctk.CTkScrollableFrame(frame, height=280)
+        scroll.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        check_vars = []
+        for i, path in enumerate(video_paths):
+            var = ctk.BooleanVar(value=True)
+            check_vars.append((var, path))
+            basename = os.path.basename(path)
+            ctk.CTkCheckBox(scroll, text=f"{i+1}. {basename[:40]}", variable=var, font=("Arial", 11)).pack(anchor="w", pady=2)
+        
+        # Status
+        status_label = ctk.CTkLabel(frame, text="", font=("Arial", 11), text_color="#60A5FA")
+        status_label.pack(pady=5)
+        
+        # Buttons
+        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        
+        def start_queue_upload():
+            selected = [path for var, path in check_vars if var.get()]
+            if not selected:
+                status_label.configure(text="⚠️ No clips selected", text_color="#F59E0B")
+                return
+            
+            dialog.destroy()
+            
+            # Start upload queue
+            self._run_clipper_upload_queue(selected, poster)
+        
+        ctk.CTkButton(btn_frame, text="Cancel", command=dialog.destroy, width=100, fg_color="#4B5563").pack(side="left", padx=(0, 10))
+        ctk.CTkButton(btn_frame, text=f"🚀 Upload Selected", command=start_queue_upload, width=180, 
+                      fg_color="#FF0000", hover_color="#CC0000", font=("Arial", 12, "bold")).pack(side="left")
+    
+    def _run_clipper_upload_queue(self, video_paths: list, poster):
+        """Upload multiple clips to YouTube sequentially"""
+        total = len(video_paths)
+        success_count = 0
+        
+        for i, path in enumerate(video_paths):
+            basename = os.path.basename(path)
+            # Auto-generate basic title/desc from filename
+            title = f"🎬 {basename.replace('.mp4', '').replace('_', ' ')[:80]}"
+            desc = f"Viral clip #{i+1}\n\n#shorts #viral #clip"
+            tags = ["shorts", "viral", "clip"]
+            
+            self._log_clipper(f"[YouTube] Uploading {i+1}/{total}: {basename}")
+            
+            try:
+                result = poster.upload_video(
+                    video_path=path,
+                    title=title,
+                    description=desc,
+                    tags=tags,
+                    privacy="private"  # Safe default
+                )
+                
+                if result.get("success"):
+                    success_count += 1
+                    self._log_clipper(f"[YouTube] ✅ Uploaded: {result.get('video_url', '')}")
+                else:
+                    self._log_clipper(f"[YouTube] ❌ Failed: {result.get('error', 'Unknown')}")
+            except Exception as e:
+                self._log_clipper(f"[YouTube] ❌ Error: {str(e)[:50]}")
+        
+        # Final summary
+        self.after(0, lambda: messagebox.showinfo(
+            "Upload Complete", 
+            f"Uploaded {success_count}/{total} clips to YouTube (private).\n\nCheck YouTube Studio to edit and publish."
+        ))
+    
+    def _show_youtube_upload_dialog(self, video_path: str, default_title: str, default_desc: str, default_tags: list):
+        """Show YouTube upload dialog popup for any video output"""
+        if not HAS_YOUTUBE_POSTER:
+            return
+        
+        # Ask if user wants to upload to YouTube
+        if not messagebox.askyesno("Upload to YouTube?", "Do you want to upload this video to YouTube?"):
+            return
+        
+        # Check if connected
+        try:
+            poster = YouTubePoster()
+            if not poster.is_authenticated():
+                messagebox.showwarning("Not Connected", "Please connect YouTube in API Settings first.")
+                return
+        except Exception as e:
+            messagebox.showerror("Error", f"YouTube check failed: {e}")
+            return
+        
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("📺 Upload to YouTube")
+        dialog.geometry("500x620")
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() - 500) // 2
+        y = (dialog.winfo_screenheight() - 620) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Content
+        frame = ctk.CTkFrame(dialog, fg_color="#1a1a2e")
+        frame.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        # Title
+        ctk.CTkLabel(frame, text="Title:", font=("Arial", 12), text_color="#9CA3AF").pack(anchor="w", padx=10, pady=(10, 0))
+        title_entry = ctk.CTkEntry(frame, width=400, height=35)
+        title_entry.pack(fill="x", padx=10, pady=5)
+        title_entry.insert(0, default_title[:100])
+        
+        # Description
+        ctk.CTkLabel(frame, text="Description:", font=("Arial", 12), text_color="#9CA3AF").pack(anchor="w", padx=10, pady=(10, 0))
+        desc_text = ctk.CTkTextbox(frame, width=400, height=100)
+        desc_text.pack(fill="x", padx=10, pady=5)
+        desc_text.insert("0.0", default_desc[:500])
+        
+        # Tags
+        ctk.CTkLabel(frame, text="Tags (comma separated):", font=("Arial", 12), text_color="#9CA3AF").pack(anchor="w", padx=10, pady=(10, 0))
+        tags_entry = ctk.CTkEntry(frame, width=400, height=35)
+        tags_entry.pack(fill="x", padx=10, pady=5)
+        tags_entry.insert(0, ", ".join(default_tags)[:200])
+        
+        # Settings row
+        settings_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        settings_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Privacy
+        ctk.CTkLabel(settings_frame, text="Privacy:", font=("Arial", 11), text_color="#6B7280").pack(side="left")
+        privacy_var = ctk.StringVar(value="private")
+        privacy_dropdown = ctk.CTkOptionMenu(settings_frame, values=["private", "unlisted", "public"], variable=privacy_var, width=100)
+        privacy_dropdown.pack(side="left", padx=(5, 20))
+        
+        # Not for kids
+        not_kids_var = ctk.BooleanVar(value=True)
+        not_kids_check = ctk.CTkCheckBox(settings_frame, text="Not for Kids", variable=not_kids_var, font=("Arial", 11))
+        not_kids_check.pack(side="left", padx=(0, 15))
+        
+        # AI Content disclosure (YouTube compliance)
+        ai_content_var = ctk.BooleanVar(value=True)
+        ai_content_check = ctk.CTkCheckBox(settings_frame, text="🤖 AI Content", variable=ai_content_var, font=("Arial", 11))
+        ai_content_check.pack(side="left")
+        
+        # Advanced options frame
+        adv_frame = ctk.CTkFrame(frame, fg_color="#16213e")
+        adv_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(adv_frame, text="📅 Schedule & Advanced", font=("Arial", 10, "bold"), text_color="#60A5FA").pack(anchor="w", padx=8, pady=(5, 3))
+        
+        adv_row1 = ctk.CTkFrame(adv_frame, fg_color="transparent")
+        adv_row1.pack(fill="x", padx=8, pady=2)
+        
+        # Schedule datetime (optional)
+        ctk.CTkLabel(adv_row1, text="Schedule:", font=("Arial", 10), text_color="#6B7280").pack(side="left")
+        schedule_entry = ctk.CTkEntry(adv_row1, width=180, height=28, placeholder_text="YYYY-MM-DD HH:MM (optional)")
+        schedule_entry.pack(side="left", padx=(5, 15))
+        
+        # Notify subscribers
+        notify_var = ctk.BooleanVar(value=True)
+        notify_check = ctk.CTkCheckBox(adv_row1, text="Notify Subs", variable=notify_var, font=("Arial", 10))
+        notify_check.pack(side="left")
+        
+        adv_row2 = ctk.CTkFrame(adv_frame, fg_color="transparent")
+        adv_row2.pack(fill="x", padx=8, pady=2)
+        
+        # Thumbnail browse
+        ctk.CTkLabel(adv_row2, text="Thumbnail:", font=("Arial", 10), text_color="#6B7280").pack(side="left")
+        thumbnail_path_var = ctk.StringVar(value="")
+        thumb_entry = ctk.CTkEntry(adv_row2, width=120, height=28, textvariable=thumbnail_path_var, state="readonly")
+        thumb_entry.pack(side="left", padx=(5, 3))
+        
+        def browse_thumb():
+            from tkinter import filedialog
+            path = filedialog.askopenfilename(
+                title="Select Thumbnail",
+                filetypes=[("Images", "*.jpg *.jpeg *.png")]
+            )
+            if path:
+                thumbnail_path_var.set(path)
+        
+        ctk.CTkButton(adv_row2, text="📁", width=30, height=28, command=browse_thumb).pack(side="left", padx=(0, 3))
+        
+        # Auto thumbnail from hook frame (2.5s)
+        def auto_thumb():
+            status_label.configure(text="⏳ Extracting hook frame...", text_color="#60A5FA")
+            dialog.update()
+            thumb = poster.auto_generate_thumbnail(video_path, timestamp=2.5)
+            if thumb:
+                thumbnail_path_var.set(thumb)
+                status_label.configure(text="✅ Thumbnail from hook frame (2.5s)", text_color="#10B981")
+            else:
+                status_label.configure(text="❌ Auto thumbnail failed", text_color="#EF4444")
+        
+        ctk.CTkButton(adv_row2, text="🎬 Auto", width=50, height=28, fg_color="#1a1a2e", 
+                      hover_color="#2d2d44", command=auto_thumb).pack(side="left")
+        
+        adv_row3 = ctk.CTkFrame(adv_frame, fg_color="transparent")
+        adv_row3.pack(fill="x", padx=8, pady=(2, 8))
+        
+        # Playlist dropdown
+        ctk.CTkLabel(adv_row3, text="Playlist:", font=("Arial", 10), text_color="#6B7280").pack(side="left")
+        playlist_var = ctk.StringVar(value="None")
+        playlist_map = {"None": None}
+        playlist_names = ["None"]
+        
+        # Fetch playlists async
+        try:
+            playlists = poster.get_playlists()
+            for pl in playlists:
+                playlist_names.append(pl["title"][:30])
+                playlist_map[pl["title"][:30]] = pl["id"]
+        except:
+            pass
+        
+        playlist_dropdown = ctk.CTkOptionMenu(adv_row3, values=playlist_names, variable=playlist_var, width=180)
+        playlist_dropdown.pack(side="left", padx=(5, 0))
+        
+        # Status label
+        status_label = ctk.CTkLabel(frame, text="", font=("Arial", 11), text_color="#60A5FA")
+        status_label.pack(pady=5)
+        
+        # Buttons
+        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=10, pady=10)
+        
+        def do_upload():
+            title = title_entry.get()[:100]
+            description = desc_text.get("0.0", "end").strip()[:5000]
+            tags = [t.strip() for t in tags_entry.get().split(",") if t.strip()]
+            privacy = privacy_var.get()
+            made_for_kids = not not_kids_var.get()
+            notify_subs = notify_var.get()
+            thumb_path = thumbnail_path_var.get() if thumbnail_path_var.get() else None
+            playlist_id = playlist_map.get(playlist_var.get())
+            
+            # Parse schedule datetime
+            schedule_dt = None
+            sched_text = schedule_entry.get().strip()
+            if sched_text:
+                try:
+                    from datetime import datetime
+                    dt = datetime.strptime(sched_text, "%Y-%m-%d %H:%M")
+                    schedule_dt = dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                except:
+                    status_label.configure(text="❌ Invalid schedule format (YYYY-MM-DD HH:MM)", text_color="#EF4444")
+                    return
+            
+            status_label.configure(text="⏳ Uploading...")
+            upload_btn.configure(state="disabled")
+            dialog.update()
+            
+            def run_upload():
+                try:
+                    result = poster.upload_video(
+                        video_path=video_path,
+                        title=title,
+                        description=description,
+                        tags=tags,
+                        privacy=privacy,
+                        made_for_kids=made_for_kids,
+                        notify_subscribers=notify_subs,
+                        thumbnail_path=thumb_path,
+                        playlist_id=playlist_id,
+                        schedule_datetime=schedule_dt,
+                        contains_synthetic_media=ai_content_var.get()
+                    )
+                    
+                    def show_result():
+                        if result.get("success"):
+                            status_label.configure(text="✅ Upload successful!", text_color="#10B981")
+                            messagebox.showinfo("Success", f"Video uploaded!\n\n{result.get('video_url', '')}")
+                            dialog.destroy()
+                        else:
+                            status_label.configure(text=f"❌ {result.get('error', 'Failed')}", text_color="#EF4444")
+                            upload_btn.configure(state="normal")
+                    
+                    self.after(0, show_result)
+                except Exception as e:
+                    self.after(0, lambda: status_label.configure(text=f"❌ {str(e)[:50]}", text_color="#EF4444"))
+                    self.after(0, lambda: upload_btn.configure(state="normal"))
+            
+            threading.Thread(target=run_upload, daemon=True).start()
+        
+        cancel_btn = ctk.CTkButton(btn_frame, text="Cancel", command=dialog.destroy, width=100, fg_color="#4B5563", hover_color="#374151")
+        cancel_btn.pack(side="left", padx=(0, 10))
+        
+        upload_btn = ctk.CTkButton(btn_frame, text="🚀 Upload", command=do_upload, width=150, fg_color="#FF0000", hover_color="#CC0000", font=("Arial", 12, "bold"))
+        upload_btn.pack(side="left")
     
     # ============================================================================
     # TAB 4: DOCS CONTENT (INDONESIAN)
@@ -3956,25 +4683,25 @@ Return ONLY a valid JSON Array. No markdown, no explanation.
         # Section 3: Features Update
         self._create_docs_section(scroll,
             "🆕 FITUR TERBARU (Dec 2025)",
-            """• Fixed 5-Parts Narration Structure
+            """• Pollinations API v2 (NEW!)
+  → Endpoint baru: gen.pollinations.ai (lebih stabil)
+  → Bearer Auth: lebih cepat dengan API key
+  → Model fallback: flux → turbo → zimage (auto-retry)
+  → Backward compatible: tanpa key tetap jalan
+
+• Fixed 5-Parts Narration Structure
   → Hook → Detail → Realization → Climax → Ending
   → Gambar berubah tiap 2-3 detik (engaging)
 
 • Image Count Slider: 5-75 gambar
-  → Terpisah dari struktur narasi
   → Max 3 menit video (YouTube Shorts)
 
 • Genre-Specific Templates (10 genre)
-  → Formal: Horror, Documentary, Fairy Tale, Children's, Sci-Fi
+  → Formal: Horror, Documentary, Fairy Tale, Sci-Fi
   → Casual: Comedy, Viral Shorts, Brainrot, Brainrot ID
-  → Semi-formal: Motivational
 
-• Filter Overlay Baru: 10 combo filters
-  → Magic Glow, Dark Terror, Cyber Neon, Fun Pop, dll
-
-• Hook Text: Box PUTIH dengan text HITAM
-  → Tampil 5 detik pertama video
-  → AI generate clickbait hook otomatis"""
+• Filter Overlay: 10 combo filters
+  → Magic Glow, Dark Terror, Cyber Neon, Fun Pop, dll"""
         )
         
         # Section 4: API Settings
@@ -3986,7 +4713,14 @@ Return ONLY a valid JSON Array. No markdown, no explanation.
 • Gemini API: Digunakan untuk generate cerita (GRATIS)
   → Daftar di: aistudio.google.com/app/apikey
 
-• Pollinations.ai: Generate gambar (GRATIS, no API key)
+• Pollinations API: Generate gambar AI (GRATIS + lebih cepat dengan key)
+  → Daftar di: enter.pollinations.ai
+  → Tanpa key: tetap bisa, tapi antri lama
+  → Dengan key: prioritas queue, lebih cepat
+  → Model: flux → turbo → zimage (auto fallback)
+
+• Prodia API: Fallback image generation (Optional)
+  → Daftar di: app.prodia.com/api
 
 API Key disimpan lokal di config.json (aman)"""
         )
