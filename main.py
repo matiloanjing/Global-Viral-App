@@ -2445,6 +2445,10 @@ class KilatCodeClipperApp(ctk.CTk):
                     # Store path for download button
                     self.last_output_path = final_output_path
                     
+                    # Store transcript and temp folder for YouTube caption generation
+                    self._last_transcript = transcript
+                    self._last_temp_folder = temp_folder
+                    
                     # Show video preview in Scene Preview area
                     def show_preview():
                         # Clear previous preview
@@ -2512,13 +2516,42 @@ class KilatCodeClipperApp(ctk.CTk):
                             self._yt_caption_data = {}
                             gemini_key = self.config.get("gemini_api_key", "")
                             
-                            if gemini_key and transcript:
+                            # Use stored transcript (from self, not closure)
+                            yt_transcript = getattr(self, '_last_transcript', None)
+                            if not yt_transcript:
+                                # Try reading from transcript.txt in temp folder
+                                temp_folder_path = getattr(self, '_last_temp_folder', None)
+                                if temp_folder_path:
+                                    transcript_file = os.path.join(temp_folder_path, "transcript.txt")
+                                    if os.path.exists(transcript_file):
+                                        try:
+                                            with open(transcript_file, "r", encoding="utf-8") as f:
+                                                content = f.read()
+                                                # Skip header line
+                                                if "=== ORIGINAL TRANSCRIPT ===" in content:
+                                                    yt_transcript = content.split("=== ORIGINAL TRANSCRIPT ===")[-1].strip()
+                                                else:
+                                                    yt_transcript = content
+                                            print(f"DEBUG: Read transcript from file: {len(yt_transcript)} chars")
+                                        except Exception as e:
+                                            print(f"DEBUG: Failed to read transcript file: {e}")
+                            
+                            print(f"DEBUG: gemini_key exists: {bool(gemini_key)}, transcript exists: {bool(yt_transcript)}")
+                            
+                            if gemini_key and yt_transcript:
                                 try:
-                                    caption_result = generate_youtube_caption(transcript, "id", gemini_key)
+                                    print("DEBUG: Calling generate_youtube_caption...")
+                                    caption_result = generate_youtube_caption(yt_transcript, "id", gemini_key)
+                                    print(f"DEBUG: Caption result: {caption_result}")
                                     if "error" not in caption_result:
                                         self._yt_caption_data = caption_result
+                                        print(f"DEBUG: ✓ Caption generated: {caption_result.get('title', 'N/A')}")
+                                    else:
+                                        print(f"DEBUG: ✗ Caption error: {caption_result.get('error')}")
                                 except Exception as e:
-                                    print(f"Caption gen error: {e}")
+                                    print(f"DEBUG: Caption gen exception: {e}")
+                            else:
+                                print(f"DEBUG: Skipping caption gen - missing key or transcript")
                             
                             # Default values if caption generation failed
                             default_title = self._yt_caption_data.get("title", f"🔥 {genre} Story - AI Generated")
@@ -2543,26 +2576,112 @@ class KilatCodeClipperApp(ctk.CTk):
                             self.yt_tags_entry.pack(fill="x", padx=10, pady=(0, 10))
                             self.yt_tags_entry.insert(0, default_tags[:200])
                             
-                            # Settings row
+                            # Settings row 1: Privacy + Not for Kids + AI Content
                             settings_frame = ctk.CTkFrame(scroll_inner, fg_color="transparent")
-                            settings_frame.pack(fill="x", padx=10, pady=(0, 10))
+                            settings_frame.pack(fill="x", padx=10, pady=(0, 5))
                             
                             # Privacy dropdown
                             ctk.CTkLabel(settings_frame, text="Privacy:", font=("Arial", 10), text_color="#6B7280").pack(side="left")
                             self.yt_privacy_var = ctk.StringVar(value="private")
                             self.yt_privacy_dropdown = ctk.CTkOptionMenu(
                                 settings_frame, values=["private", "unlisted", "public"],
-                                variable=self.yt_privacy_var, width=100, height=28
+                                variable=self.yt_privacy_var, width=80, height=26
                             )
-                            self.yt_privacy_dropdown.pack(side="left", padx=(5, 15))
+                            self.yt_privacy_dropdown.pack(side="left", padx=(3, 8))
                             
                             # Not for kids checkbox
                             self.yt_not_kids_var = ctk.BooleanVar(value=True)
                             self.yt_not_kids_check = ctk.CTkCheckBox(
-                                settings_frame, text="Not for Kids", variable=self.yt_not_kids_var,
-                                font=("Arial", 10), checkbox_width=18, checkbox_height=18
+                                settings_frame, text="Not Kids", variable=self.yt_not_kids_var,
+                                font=("Arial", 9), checkbox_width=16, checkbox_height=16
                             )
-                            self.yt_not_kids_check.pack(side="left")
+                            self.yt_not_kids_check.pack(side="left", padx=(0, 5))
+                            
+                            # AI Content disclosure
+                            self.yt_ai_content_var = ctk.BooleanVar(value=True)
+                            ai_check = ctk.CTkCheckBox(
+                                settings_frame, text="🤖 AI", variable=self.yt_ai_content_var,
+                                font=("Arial", 9), checkbox_width=16, checkbox_height=16
+                            )
+                            ai_check.pack(side="left")
+                            
+                            # Settings row 2: Schedule + Notify
+                            settings_row2 = ctk.CTkFrame(scroll_inner, fg_color="transparent")
+                            settings_row2.pack(fill="x", padx=10, pady=(0, 5))
+                            
+                            ctk.CTkLabel(settings_row2, text="Schedule:", font=("Arial", 9), text_color="#6B7280").pack(side="left")
+                            self.yt_schedule_entry = ctk.CTkEntry(settings_row2, width=120, height=24, 
+                                                                   placeholder_text="YYYY-MM-DD HH:MM")
+                            self.yt_schedule_entry.pack(side="left", padx=(3, 8))
+                            
+                            self.yt_notify_var = ctk.BooleanVar(value=True)
+                            notify_check = ctk.CTkCheckBox(
+                                settings_row2, text="Notify", variable=self.yt_notify_var,
+                                font=("Arial", 9), checkbox_width=16, checkbox_height=16
+                            )
+                            notify_check.pack(side="left")
+                            
+                            # Settings row 3: Thumbnail
+                            thumb_row = ctk.CTkFrame(scroll_inner, fg_color="transparent")
+                            thumb_row.pack(fill="x", padx=10, pady=(0, 5))
+                            
+                            ctk.CTkLabel(thumb_row, text="Thumb:", font=("Arial", 9), text_color="#6B7280").pack(side="left")
+                            self.yt_thumb_path_var = ctk.StringVar(value="")
+                            thumb_entry = ctk.CTkEntry(thumb_row, width=100, height=24, 
+                                                       textvariable=self.yt_thumb_path_var, state="readonly")
+                            thumb_entry.pack(side="left", padx=(3, 3))
+                            
+                            def browse_thumb():
+                                from tkinter import filedialog
+                                path = filedialog.askopenfilename(
+                                    title="Select Thumbnail",
+                                    filetypes=[("Images", "*.jpg *.jpeg *.png")]
+                                )
+                                if path:
+                                    self.yt_thumb_path_var.set(path)
+                            
+                            ctk.CTkButton(thumb_row, text="📁", width=26, height=24, 
+                                          command=browse_thumb).pack(side="left", padx=(0, 2))
+                            
+                            # Auto thumbnail
+                            def auto_thumb():
+                                try:
+                                    poster = YouTubePoster()
+                                    thumb = poster.auto_generate_thumbnail(final_output_path, timestamp=2.5)
+                                    if thumb:
+                                        self.yt_thumb_path_var.set(thumb)
+                                except Exception as e:
+                                    print(f"Auto thumb failed: {e}")
+                            
+                            ctk.CTkButton(thumb_row, text="🎬", width=26, height=24, fg_color="#1a1a2e",
+                                          hover_color="#2d2d44", command=auto_thumb).pack(side="left")
+                            
+                            # Settings row 4: Playlist
+                            playlist_row = ctk.CTkFrame(scroll_inner, fg_color="transparent")
+                            playlist_row.pack(fill="x", padx=10, pady=(0, 8))
+                            
+                            ctk.CTkLabel(playlist_row, text="Playlist:", font=("Arial", 9), text_color="#6B7280").pack(side="left")
+                            self.yt_playlist_var = ctk.StringVar(value="None")
+                            self.yt_playlist_map = {"None": None}
+                            playlist_names = ["None"]
+                            
+                            # Fetch playlists (async would be better but simple for now)
+                            try:
+                                poster = YouTubePoster()
+                                if poster.is_authenticated():
+                                    playlists = poster.get_playlists()
+                                    for pl in playlists[:10]:
+                                        name = pl["title"][:20]
+                                        playlist_names.append(name)
+                                        self.yt_playlist_map[name] = pl["id"]
+                            except:
+                                pass
+                            
+                            self.yt_playlist_dropdown = ctk.CTkOptionMenu(
+                                playlist_row, values=playlist_names,
+                                variable=self.yt_playlist_var, width=150, height=24
+                            )
+                            self.yt_playlist_dropdown.pack(side="left", padx=(3, 0))
                             
                             # Buttons row
                             btn_frame = ctk.CTkFrame(scroll_inner, fg_color="transparent")
@@ -2570,9 +2689,11 @@ class KilatCodeClipperApp(ctk.CTk):
                             
                             # Regenerate caption button
                             def regenerate_caption():
-                                if gemini_key and transcript:
+                                regen_transcript = getattr(self, '_last_transcript', None)
+                                key = self.config.get("gemini_api_key", "")
+                                if key and regen_transcript:
                                     try:
-                                        result = generate_youtube_caption(transcript, "id", gemini_key)
+                                        result = generate_youtube_caption(regen_transcript, "id", key)
                                         if "error" not in result:
                                             self.yt_title_entry.delete(0, "end")
                                             self.yt_title_entry.insert(0, result.get("title", "")[:100])
@@ -2580,16 +2701,20 @@ class KilatCodeClipperApp(ctk.CTk):
                                             self.yt_desc_text.insert("0.0", result.get("description", "")[:500])
                                             self.yt_tags_entry.delete(0, "end")
                                             self.yt_tags_entry.insert(0, ", ".join(result.get("tags", []))[:200])
+                                        else:
+                                            messagebox.showerror("Error", result.get("error", "Unknown"))
                                     except Exception as e:
                                         messagebox.showerror("Error", f"Caption regeneration failed: {e}")
+                                else:
+                                    messagebox.showwarning("Missing", "Need Gemini API key and transcript")
                             
                             regen_btn = ctk.CTkButton(
-                                btn_frame, text="🔄 Regenerate",
+                                btn_frame, text="🔄",
                                 command=regenerate_caption,
-                                width=100, height=32,
+                                width=35, height=30,
                                 fg_color="#4B5563", hover_color="#374151"
                             )
-                            regen_btn.pack(side="left", padx=(0, 10))
+                            regen_btn.pack(side="left", padx=(0, 5))
                             
                             # Upload to YouTube button
                             def upload_to_youtube():
@@ -2606,6 +2731,21 @@ class KilatCodeClipperApp(ctk.CTk):
                                     privacy = self.yt_privacy_var.get()
                                     made_for_kids = not self.yt_not_kids_var.get()
                                     
+                                    # Advanced params
+                                    schedule_str = self.yt_schedule_entry.get().strip()
+                                    schedule_dt = None
+                                    if schedule_str:
+                                        try:
+                                            from datetime import datetime
+                                            schedule_dt = datetime.strptime(schedule_str, "%Y-%m-%d %H:%M")
+                                        except:
+                                            pass
+                                    
+                                    thumbnail_path = self.yt_thumb_path_var.get() if self.yt_thumb_path_var.get() else None
+                                    playlist_id = self.yt_playlist_map.get(self.yt_playlist_var.get())
+                                    notify_subs = self.yt_notify_var.get()
+                                    ai_content = self.yt_ai_content_var.get()
+                                    
                                     self.yt_upload_btn.configure(state="disabled", text="⏳ Uploading...")
                                     self.update()
                                     
@@ -2617,7 +2757,12 @@ class KilatCodeClipperApp(ctk.CTk):
                                             description=description,
                                             tags=tags,
                                             privacy=privacy,
-                                            made_for_kids=made_for_kids
+                                            made_for_kids=made_for_kids,
+                                            notify_subscribers=notify_subs,
+                                            thumbnail_path=thumbnail_path,
+                                            playlist_id=playlist_id,
+                                            schedule_datetime=schedule_dt,
+                                            contains_synthetic_media=ai_content
                                         )
                                         
                                         def show_result():
@@ -2640,11 +2785,11 @@ class KilatCodeClipperApp(ctk.CTk):
                                     self.yt_upload_btn.configure(state="normal", text="🚀 Upload", fg_color="#FF0000")
                             
                             self.yt_upload_btn = ctk.CTkButton(
-                                btn_frame, text="🚀 Upload to YouTube",
+                                btn_frame, text="🚀 Upload",
                                 command=upload_to_youtube,
-                                width=150, height=32,
+                                width=100, height=30,
                                 fg_color="#FF0000", hover_color="#CC0000",
-                                font=("Arial", 12, "bold")
+                                font=("Arial", 11, "bold")
                             )
                             self.yt_upload_btn.pack(side="left")
                         
